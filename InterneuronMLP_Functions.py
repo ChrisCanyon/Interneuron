@@ -2,7 +2,7 @@
 # interneuronIndex is the layer we want to add an Interneuron to
 # layers = an array of integers defining how many nodes per layer (including input and output layer)
 def set_weights(layers, interneuronIndex):
-    if(interneuronIndex == len(layers) - 1)
+    if(interneuronIndex == len(layers) - 1):
         #todo throw
         print("invalid interneuronIndex")
         return
@@ -24,7 +24,7 @@ def set_weights(layers, interneuronIndex):
 
 #like set_weights but with biases
 def set_biases(layers, interneuronIndex):
-    if(interneuronIndex == len(layers) - 1)
+    if(interneuronIndex == len(layers) - 1):
         #todo throw
         print("invalid interneuronIndex")
         return
@@ -36,7 +36,7 @@ def set_biases(layers, interneuronIndex):
         biases.append(tmp)
 
     # len(layers) - 2 because i dont want to set the final layer
-    for i in range(len(layers) - 2)
+    for i in range(len(layers) - 2):
         tmp = tf.Variable(tf.random_normal(layers[i+1]]))
         interneuronBiases.append(tmp)
 

@@ -8,12 +8,101 @@ mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
 import tensorflow as tf
 
+# returns tuple (InterneuronWeights, weight)
+# interneuronIndex is the layer we want to add an Interneuron to
+# layers = an array of integers defining how many nodes per layer (including input and output layer)
+def set_weights(layers, interneuronIndex):
+    if(interneuronIndex == len(layers) - 1):
+        #todo throw
+        print("invalid interneuronIndex")
+        return
+
+    interneuronWeights = []
+    weights = []
+    for i in range(len(layers) - 1):
+        tmp = tf.Variable(tf.random_normal([layers[i], layers[i+1]]))
+        weights.append(tmp)
+
+    for i in range(len(layers) - 2):
+        tmp = tf.Variable(tf.random_normal([layers[i], layers[i+1]]))
+        interneuronWeights.append(tmp)
+
+    tmp = tf.Variable(tf.random_normal([layers[len(layers)-2], layers[interneuronIndex] * layers[interneuronIndex + 1]]))
+    interneuronWeights.append(tmp)
+
+    return (interneuronWeights, weights)
+
+#like set_weights but with biases
+def set_biases(layers, interneuronIndex):
+    if(interneuronIndex == len(layers) - 1):
+        #todo throw
+        print("invalid interneuronIndex")
+        return
+
+    interneuronBiases = []
+    biases = []
+    for i in range(len(layers) - 1):
+        tmp = tf.Variable(tf.random_normal([layers[i+1]]))
+        biases.append(tmp)
+
+    # len(layers) - 2 because i dont want to set the final layer
+    for i in range(len(layers) - 2):
+        tmp = tf.Variable(tf.random_normal([layers[i+1]]))
+        interneuronBiases.append(tmp)
+
+    tmp = tf.Variable(tf.random_normal([layers[interneuronIndex] * layers[interneuronIndex + 1]]))
+    interneuronBiases.append(tmp)
+
+    return (interneuronBiases, biases)
+
+def create_model(x, weights, biases, interneuronWeights, interneuronBiases, interneuronIndex, layers):
+    #TODO when do you do reduce sum?
+    examples_size = tf.shape(x)[0]
+    ident = tf.eye(examples_size)
+    ident = tf.reshape(ident,[examples_size, examples_size, 1])
+
+
+    #setup Interneurons
+    previousLayer = tf.add(tf.matmul(x, interneuronWeights[0]), interneuronBiases[0])
+    previousLayer = tf.nn.relu(previousLayer)
+    for i in range(len(interneuronWeights) - 2): #-2 because first layer is already made and final layer is special
+        nextLayer = tf.add(tf.matmul(previousLayer, interneuronWeights[i+1]), interneuronBiases[i+1]);
+        nextLayer = tf.nn.relu(nextLayer)
+        previousLayer = nextLayer
+
+    interneuronOutputLayer = tf.add(tf.matmul(previousLayer, interneuronWeights[len(interneuronWeights)-1]), interneuronBiases[len(interneuronBiases)-1]);
+    interneuronOutputLayer = tf.nn.relu(interneuronOutputLayer)
+    interneuronOutputLayer = tf.reshape(interneuronOutputLayer, [examples_size, layers[interneuronIndex], layers[interneuronIndex+1]])
+
+    #setup regular network
+    previousLayer = tf.add(tf.matmul(x, weights[0]), biases[0])
+    previousLayer = tf.nn.relu(previousLayer)
+    for i in range(len(weights) - 2): #-2 because first layer is already made and final layer is special
+        if (i + 1 == interneuronIndex):
+            nextLayer = tf.matmul(tf.multiply(ident, previousLayer), tf.multiply(interneuronOutputLayer, weights[interneuronIndex]))
+            nextLayer = tf.reduce_sum(nextLayer, axis=1)
+            nextLayer = tf.add(nextLayer, biases[interneuronIndex])
+
+            nextLayer = tf.nn.relu(nextLayer)
+            previousLayer = nextLayer
+        else:
+            nextLayer = tf.add(tf.matmul(previousLayer, weights[i+1]), biases[i+1]);
+            nextLayer = tf.nn.relu(nextLayer)
+            previousLayer = nextLayer
+
+    outputLayer = tf.matmul(previousLayer, weights[len(weights) - 1]) + biases[len(biases) - 1]
+    return outputLayer
+
+
+from tensorflow.contrib.memory_stats.python.ops.memory_stats_ops import BytesInUse
+with tf.device('/device:GPU:0'):  # Replace with device you are interested in
+  bytes_in_use = BytesInUse()
 
 #Set this to 1 in order to retrain the network
 train_req = 0
 
 #save
-save_dest = os.getcwd() + "/Trained/model.ckpt"
+save_dest = os.getcwd() + "\Trained\model.ckpt"
 
 # Parameters
 global_step = tf.Variable(0, trainable=False)
@@ -25,97 +114,22 @@ training_epochs = 100
 batch_size = 100
 display_step = 1
 
-# Network Parameters
-n_hidden_1 = 256 # 1st layer number of neurons
-n_hidden_2 = 256 # 2nd layer number of neurons
-n_input = 784 # MNIST data input (img shape: 28*28)
-n_classes = 10 # MNIST total classes (0-9 digits)
 
-n_I1hidden_1 = 256 # 1st layer number of Interneurons
-n_I1hidden_2 = 256 # 2nd layer number of Interneurons
+node_structure = [784,256,256,10]
 
 # tf Graph input
-X = tf.placeholder("float", [None, n_input])
-Y = tf.placeholder("float", [None, n_classes])
+X = tf.placeholder("float", [None, node_structure[0]])
+Y = tf.placeholder("float", [None, node_structure[-1]])
 
 # Store layers weight & bias
-weights = {
-    'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-    'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([n_hidden_2, n_classes])),
+interneuronWeights, weights = set_weights(node_structure, 1)
 
-    #'I1h1': tf.Variable(tf.random_normal([n_input, n_I1hidden_1])),
-    #'I1h2': tf.Variable(tf.random_normal([n_I1hidden_1, n_I1hidden_2])),
-    #'Iout1': tf.Variable(tf.random_normal([n_I1hidden_2, n_input*n_hidden_1])),
-
-    'I2h1': tf.Variable(tf.random_normal([n_input, n_I1hidden_1])),
-    'I2h2': tf.Variable(tf.random_normal([n_I1hidden_1, n_I1hidden_2])),
-    'Iout2': tf.Variable(tf.random_normal([n_I1hidden_2, n_hidden_1*n_hidden_2]))
-}
-biases = {
-    'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-    'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([n_classes])),
-
-    #'I1b1': tf.Variable(tf.random_normal([n_I1hidden_1])),
-    #'I1b2': tf.Variable(tf.random_normal([n_I1hidden_2])),
-    #'Iout1': tf.Variable(tf.random_normal([n_input*n_hidden_1])),
-
-    'I2b1': tf.Variable(tf.random_normal([n_I1hidden_1])),
-    'I2b2': tf.Variable(tf.random_normal([n_I1hidden_2])),
-    'Iout2': tf.Variable(tf.random_normal([n_hidden_1*n_hidden_2]))
-}
+interneuronBiases, biases = set_biases(node_structure, 1)
 
 
 # Create model
 def Interneuron_MLP(x):
-
-    examples_size= tf.shape(x)[0]
-    ident= tf.eye(examples_size)
-    ident= tf.reshape(ident,[examples_size, examples_size, 1])
-
-    # Hidden fully connected iLayer with 256 neurons
-    #i1Layer_1 = tf.add(tf.matmul(x, weights['I1h1']), biases['I1b1'])
-    #i1Layer_1 = tf.nn.relu(i1Layer_1)
-    # Hidden fully connected ilayer with 256 neurons
-    #i1Layer_2 = tf.add(tf.matmul(i1Layer_1, weights['I1h2']), biases['I1b2'])
-    #i1Layer_2 = tf.nn.relu(i1Layer_2)
-    # Output fully connected ilayer with a neuron for each neuron gate
-    #iOut1_layer = tf.add(tf.matmul(i1Layer_2, weights['Iout1']), biases['Iout1'])
-    #iOut1_layer = tf.nn.relu(iOut1_layer)
-    #iOut1_layer = tf.reshape(iOut1_layer, [examples_size, n_input, n_hidden_1])
-
-    # Hidden fully connected iLayer with 256 neurons
-    i2Layer_1 = tf.add(tf.matmul(x, weights['I2h1']), biases['I2b1'])
-    i2Layer_1 = tf.nn.relu(i2Layer_1)
-    # Hidden fully connected ilayer with 256 neurons
-    i2Layer_2 = tf.add(tf.matmul(i2Layer_1, weights['I2h2']), biases['I2b2'])
-    i2Layer_2 = tf.nn.relu(i2Layer_2)
-    # Output fully connected ilayer with a neuron for each neuron gate
-    iOut2_layer = tf.add(tf.matmul(i2Layer_2, weights['Iout2']), biases['Iout2'])
-    iOut2_layer = tf.nn.relu(iOut2_layer)
-    iOut2_layer = tf.reshape(iOut2_layer, [examples_size, n_hidden_1, n_hidden_2])
-
-    #layer_1 = tf.matmul(tf.multiply(ident, x), tf.multiply(iOut1_layer,weights['h1']))
-    #layer_1 = tf.reduce_sum(layer_1,axis=1)
-    #layer_1 = tf.add(layer_1, biases['b1'])
-
-    #This is the traditional MLP layer
-    layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
-    layer_1 = tf.nn.relu(layer_1)
-
-    # Hidden fully connected layer with 256 neurons
-    layer_2 = tf.matmul(tf.multiply(ident, layer_1), tf.multiply(iOut2_layer,weights['h2']))
-    layer_2 = tf.reduce_sum(layer_2, axis=1)
-    layer_2 = tf.add(layer_2, biases['b2'])
-
-    #This is the traditional MLP layer
-    #layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-    layer_2 = tf.nn.relu(layer_2)
-
-    # Output fully connected layer with a neuron for each class
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-    return out_layer
+    return create_model(x, weights, biases, interneuronWeights, interneuronBiases, 1, node_structure)
 
 # Construct model
 logits = Interneuron_MLP(X)
@@ -131,7 +145,8 @@ train_op = optimizer.minimize(loss_op)
 init = tf.global_variables_initializer()
 
 with tf.Session() as sess:
-
+    print("initial memory usage")
+    print(sess.run(bytes_in_use))
     if train_req==1:
         sess.run(init)
 
@@ -158,12 +173,21 @@ with tf.Session() as sess:
     else:
         saver.restore(sess, save_dest)
 
-
+    print("memory after loading model")
+    print(sess.run(bytes_in_use))
     # Test model
     pred = tf.nn.softmax(logits)  # Apply softmax to logits
     correct_prediction = tf.equal(tf.argmax(pred, 1), tf.argmax(Y, 1))
     # Calculate accuracy
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 
-    print("Accuracy1:", accuracy.eval({X: mnist.test.images[:5000,:], Y: mnist.test.labels[:5000]}))
-    print("Accuracy2:", accuracy.eval({X: mnist.test.images[5001:,:], Y: mnist.test.labels[5001:]}))
+
+    testX = mnist.test.images[:1000,:]
+    testY = mnist.test.labels[:1000]
+
+    print("X len:")
+    print(len(testX))
+
+    print(sess.run(bytes_in_use))
+    print("Accuracy1:", accuracy.eval({X: testX, Y: testY}))
+    print(sess.run(bytes_in_use))
