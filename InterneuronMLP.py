@@ -25,7 +25,7 @@ training_epochs = 100
 batch_size = 100
 display_step = 10
 
-node_structure = [784,500,500,300,10]
+node_structure = [784,256,256,10]
 
 # tf Graph input
 X = tf.placeholder("float", [None, node_structure[0]])
@@ -96,4 +96,4 @@ for v in range(len(node_structure) - 2):
             t = t + a
             print('Accuracy %d: %f.'%(i+1,a))
         
-        print('InterneuronIndex: %f Final Accuracy: %f.'%(v+1, t/10.0))
+        print('InterneuronIndex: %f Final Accuracy: %f.'%(v+1, t/100.0))
