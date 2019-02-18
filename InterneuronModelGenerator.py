@@ -36,14 +36,17 @@ class InterneuronModelGenerator:
             print("invalid self._interneuronIndex")
             return
 
+        # Create main network weights
         for i in range(len(self._nodeStructure) - 1):
             tmp = tf.Variable(tf.random_normal([self._nodeStructure[i], self._nodeStructure[i+1]]))
             self._weights.append(tmp)
 
+        # Create interneuron network weights
         for i in range(len(self._nodeStructure) - 2):
             tmp = tf.Variable(tf.random_normal([self._nodeStructure[i], self._nodeStructure[i+1]]))
             self._interneuronWeights.append(tmp)
 
+        # create interneuron network output weights
         tmp = tf.Variable(tf.random_normal([self._nodeStructure[len(self._nodeStructure)-2], self._nodeStructure[self._interneuronIndex] * self._nodeStructure[self._interneuronIndex + 1]]))
         self._interneuronWeights.append(tmp)
 
@@ -56,15 +59,17 @@ class InterneuronModelGenerator:
             print("invalid self._interneuronIndex")
             return
 
+        # create main network biases
         for i in range(len(self._nodeStructure) - 1):
             tmp = tf.Variable(tf.random_normal([self._nodeStructure[i+1]]))
             self._biases.append(tmp)
 
-        # len(self._nodeStructure) - 2 because i dont want to set the final layer
+        # create interneuron network biases
         for i in range(len(self._nodeStructure) - 2):
             tmp = tf.Variable(tf.random_normal([self._nodeStructure[i+1]]))
             self._interneuronBiases.append(tmp)
-
+        
+        # create interneuron network output biases
         tmp = tf.Variable(tf.random_normal([self._nodeStructure[self._interneuronIndex] * self._nodeStructure[self._interneuronIndex + 1]]))
         self._interneuronBiases.append(tmp)
 
